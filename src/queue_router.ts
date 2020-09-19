@@ -1,12 +1,13 @@
 import { Router } from "express";
 
-import { imageCollection, sceneCollection } from "./database/index";
+import { imageCollection, sceneCollection, trailerCollection } from "./database/index";
 import * as logger from "./logger";
 import { getHead, removeSceneFromQueue } from "./queue/processing";
 import { indexImages } from "./search/image";
 import { updateScenes } from "./search/scene";
 import Image from "./types/image";
 import Scene from "./types/scene";
+import Trailer from "./types/trailer";
 
 const router = Router();
 
@@ -19,11 +20,13 @@ router.post("/:id", async (req, res) => {
   await removeSceneFromQueue(req.params.id);
   const scene = await Scene.getById(req.params.id);
 
-  const reqBody = req.body as Record<string, unknown>;
+  const reqBody = req.body as Record<string, unknown> & { trailer?: Trailer };
 
   if (scene) {
     if (reqBody.scene) {
-      Object.assign(scene, reqBody.scene);
+      Object.assign(scene, reqBody.scene, {
+        trailer: reqBody.trailer ? reqBody.trailer._id : null,
+      });
       logger.log("Merging scene data:", reqBody.scene);
       await sceneCollection.upsert(req.params.id, scene);
       await updateScenes([scene]);
@@ -50,6 +53,10 @@ router.post("/:id", async (req, res) => {
         logger.log("New thumbnail!", thumb);
         await imageCollection.upsert(thumb._id, thumb);
       }
+    }
+
+    if (reqBody.trailer) {
+      await trailerCollection.upsert(reqBody.trailer._id, reqBody.trailer);
     }
   }
 

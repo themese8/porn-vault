@@ -42,5 +42,9 @@ export default gql`
       values
       unit
     }
+    trailer {
+      _id
+      path
+    }
   }
 `;

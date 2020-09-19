@@ -5,6 +5,7 @@ import { statAsync } from "./fs/async";
 import * as logger from "./logger";
 import Image from "./types/image";
 import Scene, { ThumbnailFile } from "./types/scene";
+import Trailer from "./types/trailer";
 
 async function getQueueHead(config: IConfig): Promise<Scene> {
   logger.log("Getting queue head...");
@@ -25,6 +26,7 @@ export async function queueLoop(config: IConfig): Promise<void> {
         } as Record<string, unknown>;
         const images = [] as Image[];
         const thumbs = [] as Image[];
+        let trailer: Trailer | null = null;
 
         if (config.GENERATE_PREVIEWS && !queueHead.preview) {
           const preview = await Scene.generatePreview(queueHead);
@@ -64,9 +66,23 @@ export async function queueLoop(config: IConfig): Promise<void> {
           logger.message("Skipping screenshot generation");
         }
 
+        if (config.GENERATE_TRAILERS) {
+          try {
+            const trailerPath = await Scene.generateTrailer(queueHead);
+            trailer = new Trailer(`${queueHead.name} (trailer)`);
+            trailer.path = trailerPath;
+            trailer.scene = queueHead._id;
+            queueHead.trailer = trailer._id;
+          } catch (error) {
+            logger.error(error);
+          }
+        } else {
+          logger.message("Skipping trailer generation");
+        }
+
         await Axios.post(
           `http://localhost:${config.PORT}/queue/${queueHead._id}?password=${config.PASSWORD}`,
-          { scene: data, thumbs, images }
+          { scene: data, thumbs, images, trailer }
         );
       } catch (error) {
         const _err = error as Error;

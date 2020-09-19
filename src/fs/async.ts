@@ -1,4 +1,4 @@
-import { copyFile, readdir, readFile, stat, unlink, writeFile } from "fs";
+import { copyFile, readdir, readFile, stat, unlink, writeFile, rename } from "fs";
 import { extname, join, resolve } from "path";
 import rimraf from "rimraf";
 import { promisify } from "util";
@@ -11,6 +11,7 @@ export const readdirAsync = promisify(readdir);
 export const readFileAsync = promisify(readFile);
 export const writeFileAsync = promisify(writeFile);
 export const copyFileAsync = promisify(copyFile);
+export const moveFileAsync = promisify(rename);
 export const rimrafAsync = promisify(rimraf);
 
 const pathIsExcluded = (exclude: string[], path: string) =>

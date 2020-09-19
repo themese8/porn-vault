@@ -40,4 +40,8 @@ export default interface IScene {
     type: string;
     unit: string | null;
   }[];
+  trailer: {
+    _id: string;
+    path: string;
+  } | null;
 }

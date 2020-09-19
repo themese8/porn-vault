@@ -54,6 +54,7 @@ export default gql`
     studio: Studio
     markers: [Marker!]!
     movies: [Movie!]!
+    trailer: Trailer
   }
 
   input SceneUpdateOpts {

@@ -10,6 +10,7 @@ import markerSchema from "./schema/marker";
 import movieSchema from "./schema/movie";
 import sceneSchema from "./schema/scene";
 import studioSchema from "./schema/studio";
+import trailerSchema from "./schema/trailer";
 
 export default makeExecutableSchema({
   typeDefs: [
@@ -22,6 +23,7 @@ export default makeExecutableSchema({
     labelSchema,
     customFieldSchema,
     markerSchema,
+    trailerSchema,
   ],
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore

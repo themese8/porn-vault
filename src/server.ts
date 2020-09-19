@@ -28,6 +28,7 @@ import { index as sceneIndex } from "./search/scene";
 import Actor from "./types/actor";
 import Image from "./types/image";
 import Scene from "./types/scene";
+import Trailer from "./types/trailer";
 
 const cache = new LRU({
   max: 500,
@@ -177,6 +178,15 @@ export default async (): Promise<void> => {
 
     if (scene && scene.path) {
       const resolved = path.resolve(scene.path);
+      res.sendFile(resolved);
+    } else next(404);
+  });
+
+  app.use("/trailer/:trailer", async (req, res, next) => {
+    const trailer = await Trailer.getById(req.params.trailer);
+
+    if (trailer && trailer.path) {
+      const resolved = path.resolve(trailer.path);
       res.sendFile(resolved);
     } else next(404);
   });

@@ -6,6 +6,7 @@ import Marker from "../../types/marker";
 import Movie from "../../types/movie";
 import Scene from "../../types/scene";
 import Studio from "../../types/studio";
+import Trailer from "../../types/trailer";
 import SceneView from "../../types/watch";
 
 export default {
@@ -28,6 +29,10 @@ export default {
   },
   async studio(scene: Scene): Promise<Studio | null> {
     if (scene.studio) return Studio.getById(scene.studio);
+    return null;
+  },
+  async trailer(scene: Scene): Promise<Trailer | null> {
+    if (scene.trailer) return Trailer.getById(scene.trailer);
     return null;
   },
   async markers(scene: Scene): Promise<Marker[]> {

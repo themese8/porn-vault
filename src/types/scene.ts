@@ -16,7 +16,7 @@ import {
 } from "../database";
 import { extractActors, extractLabels, extractMovies, extractStudios } from "../extractor";
 import { singleScreenshot } from "../ffmpeg/screenshot";
-import { readdirAsync, rimrafAsync, statAsync, unlinkAsync } from "../fs/async";
+import { moveFileAsync, readdirAsync, rimrafAsync, statAsync, unlinkAsync } from "../fs/async";
 import { generateHash } from "../hash";
 import * as logger from "../logger";
 import { onSceneCreate } from "../plugin_events/scene";
@@ -86,6 +86,7 @@ export default class Scene {
   meta = new SceneMeta();
   studio: string | null = null;
   processed?: boolean = false;
+  trailer: string | null = null;
 
   static calculateScore(scene: Scene, numViews: number): number {
     return numViews + +scene.favorite * 5 + scene.rating;
@@ -697,6 +698,90 @@ export default class Scene {
         logger.error(err);
         reject(err);
       }
+    });
+  }
+
+  static async generateTrailer(scene: Scene): Promise<string> {
+    return new Promise(async (resolve) => {
+      if (!scene.path) {
+        logger.warn("No scene path, aborting trailer generation.");
+        return resolve();
+      }
+      if (!scene.meta.duration) {
+        logger.warn("No scene duration, aborting trailer generation.");
+        return resolve();
+      }
+
+      const tmpFolder = path.join("tmp", scene._id);
+      if (!existsSync(tmpFolder)) mkdirp.sync(tmpFolder);
+
+      let selectOptions = "";
+      const startPositionTime = 60;
+      const splitDuration = 5;
+      const intervalTime = 180;
+
+      let currentTime = startPositionTime;
+      while (currentTime < scene.meta.duration) {
+        const endTime = currentTime + splitDuration - 1;
+        selectOptions = `${selectOptions}${
+          selectOptions ? "+" : ""
+        }between(t\\,${currentTime}\\,${endTime})`;
+
+        currentTime = endTime + intervalTime;
+      }
+      selectOptions = `'${selectOptions}',setpts=N/FRAME_RATE/TB`;
+
+      const options = {
+        file: scene.path,
+        selectOptions,
+        output: path.resolve(tmpFolder, "trailer.mp4"),
+      };
+
+      logger.log("Creating trailer with options: ", options);
+      try {
+        await new Promise((resolve, reject) => {
+          ffmpeg(options.file)
+            .on("end", () => {
+              logger.success(`Created trailer`);
+              resolve();
+            })
+            .on("error", (err: Error, stdout, stderr) => {
+              logger.error({
+                options,
+              });
+              logger.error(err, stdout, stderr);
+              logger.error(`Trailer generation failed`);
+              reject(err);
+            })
+            .videoFilters([
+              {
+                filter: "select",
+                options: options.selectOptions,
+              },
+            ])
+            .output(options.output)
+            .noAudio()
+            .run();
+        });
+      } catch (err) {
+        logger.error("Failed trailer generation");
+        try {
+          await rimrafAsync(tmpFolder);
+        } catch (error) {
+          logger.error("Failed deleting tmp folder");
+        }
+        return resolve();
+      }
+
+      logger.log(`Created trailer for ${scene._id}.`);
+
+      const trailerPath = path.join(libraryPath("trailers/"), `${scene._id}.mp4`);
+
+      await moveFileAsync(options.output, trailerPath);
+
+      await rimrafAsync(tmpFolder);
+
+      resolve(trailerPath);
     });
   }
 }

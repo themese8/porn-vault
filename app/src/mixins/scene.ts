@@ -138,4 +138,11 @@ export default class SceneMixin extends Vue {
         this.value._id
       }?password=${localStorage.getItem("password")}`;
   }
+
+  get trailerPath() {
+    if (this.value && this.value.trailer)
+      return `${serverBase}/trailer/${
+        this.value.trailer._id
+      }?password=${localStorage.getItem("password")}`;
+  }
 }

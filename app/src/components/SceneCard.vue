@@ -12,7 +12,7 @@
                 style="position: absolute: top: 0; left: 0; width: 100%; height: 100%"
               >
                 <div style="width: 100%; height: 100%; position: relative">
-                  <video class="video-insert" ref="video" autoplay muted :src="videoPath" />
+                  <video class="video-insert" ref="video" autoplay muted :src="trailerPath || videoPath" @ended="scenePreviewEnded" />
                 </div>
               </div>
             </v-fade-transition>
@@ -140,6 +140,11 @@ export default class SceneCard extends Mixins(SceneMixin) {
   }
 
   mouseenter() {
+    if (this.trailerPath) {
+      // Do not skip the video since there is a dedicated trailer
+      return;
+    }
+
     if (this.playInterval) clearInterval(this.playInterval);
 
     this.playIndex = 60;
@@ -163,6 +168,15 @@ export default class SceneCard extends Mixins(SceneMixin) {
     if (this.playInterval) {
       // console.log("stopping video");
       clearInterval(this.playInterval);
+    }
+  }
+
+  scenePreviewEnded() {
+    const video = this.$refs.video as HTMLVideoElement | null;
+    if (video) {
+      this.playIndex = 0;
+      video.currentTime = 0;
+      video.play();
     }
   }
 

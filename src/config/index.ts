@@ -50,6 +50,7 @@ export interface IConfig {
 
   GENERATE_SCREENSHOTS: boolean;
   GENERATE_PREVIEWS: boolean;
+  GENERATE_TRAILERS: boolean;
   SCREENSHOT_INTERVAL: number;
 
   PASSWORD: string | null;
@@ -108,6 +109,7 @@ export const defaultConfig: IConfig = {
   FFPROBE_PATH: "",
   GENERATE_SCREENSHOTS: false,
   GENERATE_PREVIEWS: true,
+  GENERATE_TRAILERS: false,
   SCREENSHOT_INTERVAL: 120,
   PASSWORD: null,
   PORT: 3000,

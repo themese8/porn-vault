@@ -19,6 +19,7 @@ import Movie from "../types/movie";
 import MovieScene from "../types/movie_scene";
 import Scene from "../types/scene";
 import Studio from "../types/studio";
+import Trailer from "../types/trailer";
 import { libraryPath } from "../types/utility";
 import SceneView from "../types/watch";
 import { Izzy } from "./internal/index";
@@ -27,6 +28,7 @@ mkdirp.sync("backups/");
 mkdirp.sync("tmp/");
 
 export let sceneCollection!: Izzy.Collection<Scene>;
+export let trailerCollection!: Izzy.Collection<Trailer>;
 export let imageCollection!: Izzy.Collection<Image>;
 export let actorCollection!: Izzy.Collection<Actor>;
 export let movieCollection!: Izzy.Collection<Movie>;
@@ -54,6 +56,7 @@ export async function loadStores(): Promise<void> {
     mkdirp.sync(libraryPath("thumbnails/")); // generated screenshots
     mkdirp.sync(libraryPath("thumbnails/markers")); // generated marker thumbnails
     mkdirp.sync(libraryPath("previews/"));
+    mkdirp.sync(libraryPath("trailers/"));
   } catch (err) {
     const _err = <Error>err;
     logger.error(_err.message);
@@ -189,6 +192,13 @@ export async function loadStores(): Promise<void> {
     {
       name: "preview-index",
       key: "preview",
+    },
+  ]);
+
+  trailerCollection = await Izzy.createCollection("trailers", libraryPath("trailers.db"), [
+    {
+      name: "scene-index",
+      key: "scene",
     },
   ]);
 
