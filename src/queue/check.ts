@@ -29,7 +29,7 @@ export async function checkVideoFolders(): Promise<void> {
     await walk({
       dir: folder,
       exclude: config.scan.excludeFiles,
-      extensions: [".mp4", ".webm"],
+      extensions: [".mp4", ".webm", ".wmv"],
       cb: async (path) => {
         loader.text = `Scanned ${++numFiles} videos`;
         if (basename(path).startsWith(".")) {

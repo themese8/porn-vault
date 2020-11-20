@@ -13,6 +13,19 @@ export default gql`
     fps: Float
   }
 
+  type StreamResolution {
+    label: String!
+    width: Int
+    height: Int
+  }
+
+  type StreamType {
+    label: String!
+    mime: String!
+    type: String!
+    transcode: Boolean
+  }
+
   type SceneSearchResults {
     numItems: Int!
     numPages: Int!
@@ -72,6 +85,8 @@ export default gql`
     studio: Studio
     markers: [Marker!]!
     movies: [Movie!]!
+    streamResolutions: [StreamResolution!]!
+    streamTypes: [StreamType!]!
   }
 
   input SceneUpdateOpts {

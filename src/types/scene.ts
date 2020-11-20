@@ -36,6 +36,7 @@ import SceneView from "./watch";
 export function runFFprobe(file: string): Promise<FfprobeData> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(file, (err, metadata) => {
+      console.log(JSON.stringify(metadata, null, 2));
       if (err) return reject(err);
       resolve(metadata);
     });

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import ffmpeg from "fluent-ffmpeg";
 import { existsSync } from "fs";
 import path from "path";
 
@@ -9,13 +10,89 @@ import * as logger from "../utils/logger";
 
 const router = Router();
 
-router.get("/scene/:scene", async (req, res, next) => {
-  const scene = await Scene.getById(req.params.scene);
+const CONVERT_TIMEOUT = 5 * 1000;
 
-  if (scene && scene.path) {
+router.get("/scene/:scene/:type", async (req, res, next) => {
+  const scene = await Scene.getById(req.params.scene);
+  if (!scene || !scene.path) {
+    return next(404);
+  }
+
+  if (req.params.type === "mp4" && scene.path.includes(".mp4")) {
     const resolved = path.resolve(scene.path);
     res.sendFile(resolved);
-  } else next(404);
+  } else if (req.params.type === "webm") {
+    const startQuery = (req.query as { start?: string }).start || "0";
+    const startSeconds = Number.parseFloat(startQuery);
+
+    console.log("got start ", startSeconds);
+
+    res.writeHead(200, {
+      "Accept-Ranges": "bytes",
+      Connection: "keep-alive",
+      // "Keep-Alive": `timeout=${CONVERT_TIMEOUT / 1000}`,
+      "Transfer-Encoding": "chunked",
+      "Content-Disposition": "inline",
+      "Content-Transfer-Enconding": "binary",
+      "Content-Type": "video/webm",
+    });
+
+    let command: ffmpeg.FfmpegCommand | null = null;
+    let killTimeout: NodeJS.Timeout;
+    let killed = false;
+
+    const killCommand = (reason: string) => {
+      if (command && !killed) {
+        killed = true;
+
+        clearTimeout(killTimeout);
+        console.log(`kill ${reason}`);
+        command.kill("SIGKILL");
+        res.end();
+      }
+    };
+    const startCommandTimeout = () =>
+      (killTimeout = setTimeout(() => killCommand("timed out"), CONVERT_TIMEOUT));
+
+    command = ffmpeg(scene.path)
+      .seek(startSeconds)
+      .outputOption([
+        "-f webm",
+        "-c:v libvpx-vp9",
+        "-deadline realtime",
+        "-cpu-used 5",
+        "-row-mt 1",
+        "-crf 30",
+        "-b:v 0",
+      ])
+      // setup event handlers
+      .on("start", function (commandLine: string) {
+        console.log(`Spawned Ffmpeg with command: ${commandLine}`);
+      })
+      .on("progress", () => {
+        console.log("progress");
+        clearTimeout(killTimeout);
+        startCommandTimeout();
+      })
+      .on("end", function () {
+        console.log("file has been converted succesfully");
+        killCommand(">>end conversion");
+      })
+      .on("error", function (err) {
+        console.log(`an error happened: ${err as string}`);
+        killCommand(">>error");
+      });
+
+    command.pipe(res, { end: true });
+
+    startCommandTimeout();
+
+    res.on("end", () => {
+      killCommand(">>>RES END");
+    });
+  } else {
+    res.sendStatus(400);
+  }
 });
 
 router.get("/image/path/:path", async (req, res) => {

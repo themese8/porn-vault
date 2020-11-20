@@ -43,4 +43,32 @@ export default {
   async watches(scene: Scene): Promise<number[]> {
     return (await SceneView.getByScene(scene._id)).map((v) => v.date);
   },
+  streamResolutions(scene: Scene): { label: string; width: number; height: number }[] {
+    // TODO:
+    return [
+      {
+        label: "original resolution",
+        width: -1,
+        height: -1,
+      },
+    ];
+  },
+  streamTypes(scene: Scene): { label: string; mime: string; type: string; transcode: boolean }[] {
+    // TODO: extract from ffprobe metadata, generate streams according
+    // to current file codecs
+    return [
+      {
+        label: "direct stream",
+        mime: "video/mp4",
+        type: "mp4",
+        transcode: !scene.path?.includes("mp4"),
+      },
+      {
+        label: "transcode",
+        mime: "video/webm",
+        type: "webm",
+        transcode: !scene.path?.includes("webm"),
+      },
+    ];
+  },
 };

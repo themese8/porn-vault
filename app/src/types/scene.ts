@@ -40,4 +40,15 @@ export default interface IScene {
     type: string;
     unit: string | null;
   }[];
+  streamResolutions: {
+    label: string;
+    width: number;
+    height: number;
+  }[];
+  streamTypes: {
+    label: string;
+    mime: string;
+    type: string;
+    transcode: boolean;
+  }[];
 }

@@ -60,16 +60,14 @@
                       </v-fade-transition>
                     </div>
 
-                    <template v-if="buffered">
-                      <template v-for="i in buffered.length">
-                        <div
-                          :key="i"
-                          class="buffer-bar"
-                          :style="`left: ${percentOfVideo(buffered.start(i - 1)) * 100}%; right: ${
-                            100 - percentOfVideo(buffered.end(i - 1)) * 100
-                          }%;`"
-                        ></div>
-                      </template>
+                    <template v-for="(range, rangeIndex) in bufferedRanges">
+                      <div
+                        :key="rangeIndex"
+                        class="buffer-bar"
+                        :style="`left: ${percentOfVideo(range.start) * 100}%; right: ${
+                          100 - percentOfVideo(range.end) * 100
+                        }%;`"
+                      ></div>
                     </template>
                     <div class="progress-bar" :style="`width: ${progressPercent * 100}%;`"></div>
                     <v-tooltip v-for="marker in markers" :key="marker.id" bottom>
@@ -140,11 +138,17 @@
         <video
           @click="togglePlay(false)"
           @dblclick="toggleFullscreen"
+          @loadeddata="getCurrentStream"
           id="video"
           class="video"
           ref="video"
         >
-          <source :src="src" type="video/mp4" />
+          <source
+            v-for="streamType in streamTypes"
+            :key="streamType.type"
+            :src="streamType.url"
+            :type="streamType.mime"
+          />
         </video>
       </div>
     </v-hover>
@@ -163,9 +167,23 @@ import hotkeys from "hotkeys-js";
 const IS_MUTED = "player_is_muted";
 const VOLUME = "player_volume";
 
+interface BufferedRange {
+  start: number;
+  end: number;
+}
+
+interface StreamType {
+  label: string;
+  mime: string;
+  type: string;
+  transcode: boolean;
+  url: string;
+}
+
 @Component
 export default class VideoPlayer extends Vue {
-  @Prop(String) src!: string;
+  @Prop(Array) resolutions!: { label: string; width: number; height: number }[];
+  @Prop(Array) streamTypes!: StreamType[];
   @Prop(Number) duration!: number;
   @Prop({ default: null }) poster!: string | null;
   @Prop() markers!: { _id: string; name: string; time: number }[];
@@ -178,6 +196,9 @@ export default class VideoPlayer extends Vue {
   buffered = null as any;
   isPlaying = false;
   showPoster = true;
+
+  transcodeOffset = 0;
+  currentStream: StreamType | undefined;
 
   isVolumeDragging = false;
   isMuted = localStorage.getItem(IS_MUTED) === "true";
@@ -209,6 +230,13 @@ export default class VideoPlayer extends Vue {
     hotkeys.unbind("space", this.focusedTogglePlay);
     hotkeys.unbind("up", this.focusedIncrementVolume);
     hotkeys.unbind("down", this.focusedDecrementVolume);
+  }
+
+  getCurrentStream() {
+    const vid = <HTMLVideoElement>this.$refs.video;
+    if (vid) {
+      this.currentStream = this.streamTypes.find((type) => vid.currentSrc.startsWith(type.url));
+    }
   }
 
   panic() {
@@ -336,6 +364,20 @@ export default class VideoPlayer extends Vue {
     return this.percentOfVideo(this.progress);
   }
 
+  get bufferedRanges() {
+    if (!this.buffered) {
+      return [];
+    }
+    const bufferedRanges: BufferedRange[] = [];
+    for (let i = 0; i < this.buffered.length; i++) {
+      bufferedRanges.push({
+        start: this.transcodeOffset + this.buffered.start(i),
+        end: this.transcodeOffset + this.buffered.end(i),
+      });
+    }
+    return bufferedRanges;
+  }
+
   seekRel(delta: number, text?: string) {
     this.startControlsTimeout();
     this.notice(`Seek: ${delta > 0 ? "+" : ""}${delta.toString()}s`);
@@ -346,7 +388,17 @@ export default class VideoPlayer extends Vue {
   seek(time: number, text?: string, play = false) {
     const vid = <HTMLVideoElement>this.$refs.video;
     if (vid) {
-      vid.currentTime = time;
+      if (
+        !this.currentStream?.transcode ||
+        this.bufferedRanges.find((range) => range.start <= time && range.end >= time)
+      ) {
+        vid.currentTime = time;
+      } else {
+        const delim = vid.currentSrc.includes("?") ? "&" : "?";
+        vid.src = `${vid.currentSrc}${delim}start=${time}`;
+        this.transcodeOffset = time;
+        vid.currentTime = 0;
+      }
 
       if (play) this.play();
 
@@ -385,7 +437,7 @@ export default class VideoPlayer extends Vue {
       this.isPlaying = true;
       this.showPoster = false;
       vid.ontimeupdate = (ev) => {
-        this.progress = vid.currentTime;
+        this.progress = this.transcodeOffset + vid.currentTime;
         this.buffered = vid.buffered;
       };
       this.$emit("play");

@@ -42,5 +42,16 @@ export default gql`
       values
       unit
     }
+    streamResolutions {
+      label
+      width
+      height
+    }
+    streamTypes {
+      label
+      mime
+      type
+      transcode
+    }
   }
 `;

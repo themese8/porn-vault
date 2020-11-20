@@ -7,7 +7,8 @@
           <div class="mx-auto" style="max-width: 1100px">
             <VideoPlayer
               ref="player"
-              :src="videoPath"
+              :resolutions="streamResolutions"
+              :streamTypes="streamTypes"
               :poster="thumbnail"
               :duration="currentScene.meta.duration"
               :markers="markers"
@@ -557,6 +558,7 @@ import hotkeys from "hotkeys-js";
 import CustomFieldSelector from "../components/CustomFieldSelector.vue";
 import ActorGrid from "../components/ActorGrid.vue";
 import VideoPlayer from "../components/VideoPlayer.vue";
+import IScene from "../types/scene";
 
 interface ICropCoordinates {
   left: number;
@@ -852,11 +854,20 @@ export default class SceneDetails extends Vue {
     return contextModule.sceneAspectRatio;
   }
 
-  get videoPath() {
-    if (this.currentScene)
-      return `${serverBase}/media/scene/${this.currentScene._id}?password=${localStorage.getItem(
-        "password"
-      )}`;
+  get streamResolutions() {
+    if (this.currentScene) {
+      return this.currentScene.streamResolutions;
+    }
+  }
+
+  get streamTypes() {
+    if (this.currentScene) {
+      const base = `${serverBase}/media/scene/${this.currentScene._id}`;
+      return this.currentScene.streamTypes.map((streamType) => ({
+        ...streamType,
+        url: `${base}/${streamType.type}?password=${localStorage.getItem("password")}`,
+      }));
+    }
   }
 
   @Watch("currentScene.actors", { deep: true })
@@ -990,7 +1001,7 @@ export default class SceneDetails extends Vue {
     Vue.set(this.images, index, images);
   }
 
-  get currentScene() {
+  get currentScene(): IScene | null {
     return sceneModule.current;
   }
 
@@ -1396,5 +1407,4 @@ export default class SceneDetails extends Vue {
 }
 </script>
 
-<style lang="scss" scoped>
-</style>
+<style lang="scss" scoped></style>
