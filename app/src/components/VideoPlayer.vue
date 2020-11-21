@@ -1,5 +1,5 @@
 <template>
-  <div class="white--text">
+  <div class="video-player-root white--text">
     <v-hover v-slot:default="{ hover }">
       <div
         :class="{ 'video-wrapper': true, hideControls }"
@@ -139,6 +139,7 @@
           @click="togglePlay(false)"
           @dblclick="toggleFullscreen"
           @loadeddata="getCurrentStream"
+          @timeupdate="timeUpdate"
           id="video"
           class="video"
           ref="video"
@@ -163,6 +164,7 @@
 import { Component, Vue, Prop } from "vue-property-decorator";
 import moment from "moment";
 import hotkeys from "hotkeys-js";
+import { stringify } from "querystring";
 
 const IS_MUTED = "player_is_muted";
 const VOLUME = "player_volume";
@@ -385,22 +387,33 @@ export default class VideoPlayer extends Vue {
     this.seek(Math.min(this.duration, Math.max(0, this.progress + delta)), text);
   }
 
-  seek(time: number, text?: string, play = false) {
+  async seek(time: number, text?: string, play = false) {
     const vid = <HTMLVideoElement>this.$refs.video;
     if (vid) {
+      console.log(this.transcodeOffset, vid.currentTime, JSON.stringify(this.bufferedRanges));
+      console.log("req ", time);
       if (
         !this.currentStream?.transcode ||
-        this.bufferedRanges.find((range) => range.start <= time && range.end >= time)
+        (this.transcodeOffset < time &&
+          this.bufferedRanges.find((range) => range.start <= time && range.end >= time))
       ) {
-        vid.currentTime = time;
+        console.log("no transcode or is buffered, go to ", time - this.transcodeOffset);
+        vid.pause();
+        vid.currentTime = time - this.transcodeOffset;
       } else {
-        const delim = vid.currentSrc.includes("?") ? "&" : "?";
-        vid.src = `${vid.currentSrc}${delim}start=${time}`;
-        this.transcodeOffset = time;
+        console.log("is transcode, restart at ", time);
+        vid.pause();
         vid.currentTime = 0;
+        const src = new URL(vid.currentSrc);
+        src.searchParams.set("start", time.toString());
+        vid.src = src.toString();
+        this.transcodeOffset = time;
+        vid.load();
       }
 
-      if (play) this.play();
+      if (play) {
+        await this.play();
+      }
 
       if (text) {
         this.notice(text);
@@ -428,19 +441,31 @@ export default class VideoPlayer extends Vue {
     }, duration);
   }
 
-  play(notice = false) {
+  async play(notice = false) {
     const vid = <HTMLVideoElement>this.$refs.video;
     if (vid) {
       if (notice) this.notice("Play");
 
-      vid.play();
+      await vid.play();
       this.isPlaying = true;
       this.showPoster = false;
-      vid.ontimeupdate = (ev) => {
-        this.progress = this.transcodeOffset + vid.currentTime;
-        this.buffered = vid.buffered;
-      };
       this.$emit("play");
+    }
+  }
+
+  timeUpdate(ev) {
+    const vid = <HTMLVideoElement>this.$refs.video;
+    if (vid) {
+      console.log(
+        "time update off",
+        this.transcodeOffset,
+        "vid time ",
+        vid.currentTime,
+        " total ",
+        vid.currentTime + this.transcodeOffset
+      );
+      this.progress = this.transcodeOffset + vid.currentTime;
+      this.buffered = vid.buffered;
     }
   }
 
@@ -540,6 +565,16 @@ export default class VideoPlayer extends Vue {
 </script>
 
 <style lang="scss" scoped>
+.video-player-root {
+  &.fullHeight {
+    height: 100%;
+
+    .video-wrapper {
+      height: 100%;
+    }
+  }
+}
+
 .video-wrapper {
   cursor: pointer;
   position: relative;

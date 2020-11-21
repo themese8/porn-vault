@@ -4,9 +4,10 @@
       <BindTitle :value="currentScene.name" />
       <div class="d-flex pb-2">
         <div class="d-flex align-center text-center pa-2" style="flex-grow: 1">
-          <div class="mx-auto" style="max-width: 1100px">
+          <v-responsive class="mx-auto" max-width="1100px" :aspect-ratio="currentScene.meta.dimensions.width / currentScene.meta.dimensions.height">
             <VideoPlayer
               ref="player"
+              class="fullHeight"
               :resolutions="streamResolutions"
               :streamTypes="streamTypes"
               :poster="thumbnail"
@@ -15,7 +16,7 @@
               :preview="currentScene.preview ? imageLink(currentScene.preview) : null"
               @play="manuallyStarted = true"
             />
-          </div>
+          </v-responsive>
         </div>
         <v-divider vertical v-if="$vuetify.breakpoint.mdAndUp" />
         <div class="py-2" v-if="$vuetify.breakpoint.mdAndUp" style="width: 400px; max-width: 400px">

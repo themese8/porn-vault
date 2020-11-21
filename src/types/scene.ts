@@ -14,6 +14,7 @@ import {
   viewCollection,
 } from "../database";
 import { extractActors, extractLabels, extractMovies, extractStudios } from "../extractor";
+import { FFProbeAudioCodecs, FFProbeContainers, FFProbeVideoCodecs } from "../ffmpeg/ffprobe";
 import { singleScreenshot } from "../ffmpeg/screenshot";
 import { onSceneCreate } from "../plugins/events/scene";
 import { enqueueScene } from "../queue/processing";
@@ -36,7 +37,19 @@ import SceneView from "./watch";
 export function runFFprobe(file: string): Promise<FfprobeData> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(file, (err, metadata) => {
-      console.log(JSON.stringify(metadata, null, 2));
+      const { format, streams } = metadata;
+      console.log(
+        ">>>>>>>>>>>>>>>>>>",
+        JSON.stringify({
+          format_name: format.format_name,
+          formatDuration: format.duration,
+          streams: streams.map((s) => ({
+            codec_type: s.codec_type,
+            codec_name: s.codec_name,
+            duration: s.duration,
+          })),
+        })
+      );
       if (err) return reject(err);
       resolve(metadata);
     });
@@ -67,6 +80,9 @@ export class SceneMeta {
   duration: number | null = null;
   dimensions: IDimensions | null = null;
   fps: number | null = null;
+  videoCodec: FFProbeVideoCodecs | null = null;
+  audioCodec: FFProbeAudioCodecs | null = null;
+  container: FFProbeContainers | null = null;
 }
 
 export default class Scene {
@@ -128,13 +144,20 @@ export default class Scene {
     scene.meta.dimensions = { width: -1, height: -1 };
     scene.path = videoPath;
 
-    const streams = (await runFFprobe(videoPath)).streams;
+    const { format, streams } = await runFFprobe(videoPath);
+    scene.meta.container = (format.format_name as FFProbeContainers) || null;
 
-    let foundCorrectStream = false;
-    for (const stream of streams) {
-      if (stream.width && stream.height) {
-        scene.meta.dimensions.width = stream.width;
-        scene.meta.dimensions.height = stream.height;
+    let foundValidVideoStream = false;
+    let stream = streams.shift();
+    while (stream && (!scene.meta.videoCodec || !scene.meta.audioCodec)) {
+      if (!foundValidVideoStream && stream.codec_type === "video") {
+        scene.meta.videoCodec = (stream.codec_name as FFProbeVideoCodecs) || null;
+
+        if (stream.width && stream.height) {
+          scene.meta.dimensions.width = stream.width;
+          scene.meta.dimensions.height = stream.height;
+        }
+
         scene.meta.fps = parseInt(stream.r_frame_rate || "") || null;
         if (scene.meta.fps) {
           if (scene.meta.fps >= 10000) {
@@ -143,16 +166,28 @@ export default class Scene {
             scene.meta.fps /= 100;
           }
         }
-        scene.meta.duration = parseInt(stream.duration || "") || null;
+        scene.meta.duration = parseFloat(stream.duration || "") || null;
         scene.meta.size = (await statAsync(videoPath)).size;
-        foundCorrectStream = true;
-        break;
+        foundValidVideoStream = true;
       }
-    }
 
-    if (!foundCorrectStream) {
+      if (!scene.meta.audioCodec && stream.codec_type === "audio") {
+        scene.meta.audioCodec = (stream.codec_name as FFProbeAudioCodecs) || null;
+      }
+
+      stream = streams.shift();
+    }
+    // MKV stores does not store duration on stream
+    scene.meta.duration = scene.meta.duration ?? (format.duration || null);
+
+    if (!foundValidVideoStream) {
       logger.log(streams);
       throw new Error("Could not get video stream...broken file?");
+    }
+
+    if (!scene.meta.duration) {
+      logger.log(format);
+      throw new Error("Could not get video duration...broken file?");
     }
 
     const sceneActors = [] as string[];

@@ -7,6 +7,14 @@ import Movie from "../../types/movie";
 import Scene from "../../types/scene";
 import Studio from "../../types/studio";
 import SceneView from "../../types/watch";
+import { StreamTypes } from "./../../ffmpeg/stream";
+
+interface StreamType {
+  label: string;
+  mime: string;
+  type: string;
+  transcode: boolean;
+}
 
 export default {
   async actors(scene: Scene): Promise<Actor[]> {
@@ -53,22 +61,47 @@ export default {
       },
     ];
   },
-  streamTypes(scene: Scene): { label: string; mime: string; type: string; transcode: boolean }[] {
+  streamTypes(scene: Scene): StreamType[] {
     // TODO: extract from ffprobe metadata, generate streams according
     // to current file codecs
-    return [
-      {
+
+    const streams: StreamType[] = [];
+    console.log(scene.path);
+
+    if (scene.path?.endsWith(".mp4")) {
+      streams.unshift({
         label: "direct stream",
         mime: "video/mp4",
-        type: "mp4",
-        transcode: !scene.path?.includes("mp4"),
-      },
-      {
-        label: "transcode",
+        type: StreamTypes.DIRECT,
+        transcode: false,
+      });
+    }
+    if (scene.path?.endsWith(".webm")) {
+      streams.unshift({
+        label: "direct stream",
         mime: "video/webm",
-        type: "webm",
-        transcode: !scene.path?.includes("webm"),
-      },
-    ];
+        type: StreamTypes.DIRECT,
+        transcode: false,
+      });
+    }
+    // Otherwise needs to be transcoded
+    if (scene.path?.endsWith(".mkv")) {
+      streams.push({
+        label: "mkv transcode",
+        mime: "video/mp4",
+        type: StreamTypes.MKV,
+        transcode: true,
+      });
+    }
+    streams.push({
+      label: "webm transcode",
+      mime: "video/webm",
+      type: StreamTypes.WEBM,
+      transcode: true,
+    });
+
+    console.log(JSON.stringify(streams, null, 2));
+
+    return streams;
   },
 };
