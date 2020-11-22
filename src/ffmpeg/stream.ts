@@ -25,7 +25,12 @@ const TranscodeCodecs = {
   },
 };
 
-function streamTranscode(scene: Scene, req: Request, res: Response, outputOptions: string[]): void {
+function streamTranscode(
+  scene: Scene & { path: string },
+  req: Request,
+  res: Response,
+  outputOptions: string[]
+): void {
   const startQuery = (req.query as { start?: string }).start || "0";
   const startSeconds = Number.parseFloat(startQuery);
 
@@ -62,7 +67,7 @@ function streamTranscode(scene: Scene, req: Request, res: Response, outputOption
   console.log(scene.meta.container, scene.meta.videoCodec, scene.meta.audioCodec);
   console.log(">>>", outputOptions);
 
-  command = ffmpeg(scene.path!)
+  command = ffmpeg(scene.path)
     .seek(startSeconds)
     .outputOption(outputOptions)
     // setup event handlers
@@ -89,7 +94,11 @@ function streamTranscode(scene: Scene, req: Request, res: Response, outputOption
   startCommandTimeout();
 }
 
-export function streamDirect(scene: Scene, req: Request, res: Response): void {
+export function streamDirect(
+  scene: Scene & { path: string },
+  req: Request,
+  res: Response
+): Response | void {
   if (
     scene.meta.container &&
     scene.meta.videoCodec &&
@@ -97,18 +106,22 @@ export function streamDirect(scene: Scene, req: Request, res: Response): void {
     isVideoValid(scene.meta.container, scene.meta.videoCodec) &&
     isAudioValid(scene.meta.container, scene.meta.audioCodec)
   ) {
-    const resolved = path.resolve(scene.path!);
+    const resolved = path.resolve(scene.path);
     return res.sendFile(resolved);
   }
 
-  res
+  return res
     .status(400)
     .send(
       `Video "${scene.meta.videoCodec}" and audio codec "${scene.meta.audioCodec}" are not valid for scene's container "${scene.meta.container}"`
     );
 }
 
-export function transcodeWebm(scene: Scene, req: Request, res: Response): void {
+export function transcodeWebm(
+  scene: Scene & { path: string },
+  req: Request,
+  res: Response
+): Response | void {
   const webmOptions: string[] = [
     "-f webm",
     "-deadline realtime",
@@ -130,7 +143,15 @@ export function transcodeWebm(scene: Scene, req: Request, res: Response): void {
   return streamTranscode(scene, req, res, webmOptions);
 }
 
-export function transcodeMkv(scene: Scene, req: Request, res: Response): void {
+export function transcodeMkv(
+  scene: Scene & { path: string },
+  req: Request,
+  res: Response
+): Response | void {
+  if (scene.meta.container !== FFProbeContainers.MKV) {
+    return res.status(400).send("Scene is not an mkv file");
+  }
+
   const isMP4VideoValid =
     scene.meta.videoCodec && isVideoValid(FFProbeContainers.MP4, scene.meta.videoCodec);
   const isMP4AudioValid =
@@ -138,12 +159,10 @@ export function transcodeMkv(scene: Scene, req: Request, res: Response): void {
   console.log("mkv valid ? ", isMP4VideoValid, isMP4AudioValid);
 
   if (!isMP4VideoValid) {
-    res.status(400).send(`Video codec "${scene.meta.videoCodec}" is not valid for mp4`);
-    return;
+    return res.status(400).send(`Video codec "${scene.meta.videoCodec}" is not valid for mp4`);
   }
   if (!isMP4AudioValid) {
-    res.status(400).send(`Audio codec "${scene.meta.audioCodec}" is not valid for mp4`);
-    return;
+    return res.status(400).send(`Audio codec "${scene.meta.audioCodec}" is not valid for mp4`);
   }
 
   const mp4Options = [

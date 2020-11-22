@@ -11,10 +11,11 @@ import * as logger from "../utils/logger";
 const router = Router();
 
 router.get("/scene/:scene/:type", async (req, res, next) => {
-  const scene = await Scene.getById(req.params.scene);
-  if (!scene || !scene.path) {
+  const sc = await Scene.getById(req.params.scene);
+  if (!sc || !sc.path) {
     return next(404);
   }
+  const scene = sc as Scene & { path: string };
 
   const streamType = req.params.type as StreamTypes | null;
   console.log("req streamType", streamType);
