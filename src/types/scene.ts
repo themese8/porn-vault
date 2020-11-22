@@ -14,7 +14,12 @@ import {
   viewCollection,
 } from "../database";
 import { extractActors, extractLabels, extractMovies, extractStudios } from "../extractor";
-import { FFProbeAudioCodecs, FFProbeContainers, FFProbeVideoCodecs } from "../ffmpeg/ffprobe";
+import {
+  FFProbeAudioCodecs,
+  FFProbeContainers,
+  FFProbeVideoCodecs,
+  normalizeFFProbeContainer,
+} from "../ffmpeg/ffprobe";
 import { singleScreenshot } from "../ffmpeg/screenshot";
 import { onSceneCreate } from "../plugins/events/scene";
 import { enqueueScene } from "../queue/processing";
@@ -145,7 +150,11 @@ export default class Scene {
     scene.path = videoPath;
 
     const { format, streams } = await runFFprobe(videoPath);
-    scene.meta.container = (format.format_name as FFProbeContainers) || null;
+    scene.meta.container = await normalizeFFProbeContainer(
+      format.format_name as FFProbeContainers,
+      videoPath
+    );
+    console.log("final container ", scene.meta.container);
 
     let foundValidVideoStream = false;
     let stream = streams.shift();

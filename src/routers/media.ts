@@ -16,6 +16,7 @@ router.get("/scene/:scene/:type", async (req, res, next) => {
     return next(404);
   }
   const scene = sc as Scene & { path: string };
+  console.log(scene.meta);
 
   const streamType = req.params.type as StreamTypes | null;
   console.log("req streamType", streamType);

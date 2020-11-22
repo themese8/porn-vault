@@ -1,6 +1,8 @@
+import { createReadStream, PathLike } from "fs";
 import * as path from "path";
 
-import { getConfig } from "../config/index";
+import { getConfig } from "../config";
+import { existsAsync } from "./fs/async";
 import * as logger from "./logger";
 import { isNumber } from "./types";
 
@@ -78,4 +80,23 @@ export function generateTimestampsAtIntervals(
   }
 
   return timestamps;
+}
+
+/**
+ * Reads the first n bytes of the file into a buffer
+ * https://stackoverflow.com/a/59722384/13599482
+ *
+ * @param filepath - path to the file to read
+ * @param n - how many bytes to read
+ */
+export async function readFirstNBytes(filepath: PathLike, n: number): Promise<Buffer | null> {
+  if (!(await existsAsync(filepath))) {
+    return null;
+  }
+
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of createReadStream(filepath, { start: 0, end: n })) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }

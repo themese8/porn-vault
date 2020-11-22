@@ -1,3 +1,4 @@
+import { FFProbeContainers, getDirectPlayMimeType } from "../../ffmpeg/ffprobe";
 import Actor from "../../types/actor";
 import CustomField, { CustomFieldTarget } from "../../types/custom_field";
 import Image from "../../types/image";
@@ -62,45 +63,38 @@ export default {
     ];
   },
   streamTypes(scene: Scene): StreamType[] {
-    // TODO: extract from ffprobe metadata, generate streams according
-    // to current file codecs
+    if (!scene.path) {
+      return [];
+    }
 
     const streams: StreamType[] = [];
-    console.log(scene.path);
 
-    if (scene.path?.endsWith(".mp4")) {
-      streams.unshift({
-        label: "direct stream",
-        mime: "video/mp4",
-        type: StreamTypes.DIRECT,
-        transcode: false,
-      });
-    }
-    if (scene.path?.endsWith(".webm")) {
-      streams.unshift({
-        label: "direct stream",
-        mime: "video/webm",
-        type: StreamTypes.DIRECT,
-        transcode: false,
-      });
-    }
+    streams.unshift({
+      label: "direct stream",
+      mime: scene.meta.container ? getDirectPlayMimeType(scene.meta.container) : "",
+      type: StreamTypes.DIRECT,
+      transcode: false,
+    });
+
     // Otherwise needs to be transcoded
-    if (scene.path?.endsWith(".mkv")) {
+    if (scene.meta.container === FFProbeContainers.MKV) {
       streams.push({
         label: "mkv transcode",
-        mime: "video/mp4",
+        mime: getDirectPlayMimeType(FFProbeContainers.MP4),
         type: StreamTypes.MKV,
         transcode: true,
       });
     }
+
+    // Fallback transcode: webm
     streams.push({
       label: "webm transcode",
-      mime: "video/webm",
+      mime: getDirectPlayMimeType(FFProbeContainers.WEBM),
       type: StreamTypes.WEBM,
       transcode: true,
     });
 
-    console.log(JSON.stringify(streams, null, 2));
+    // Otherwise video cannot be streamed
 
     return streams;
   },

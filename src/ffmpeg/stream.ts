@@ -3,15 +3,20 @@ import ffmpeg from "fluent-ffmpeg";
 import path from "path";
 
 import Scene from "../types/scene";
-import { FFProbeContainers, isAudioValid, isVideoValid } from "./ffprobe";
+import {
+  audioIsValidForContainer,
+  canDirectPlay,
+  FFProbeContainers,
+  videoIsValidForContainer,
+} from "./ffprobe";
 
 const CONVERT_TIMEOUT = 5 * 1000;
 
 export enum StreamTypes {
   DIRECT = "direct",
   MP4 = "mp4",
-  WEBM = "webm",
   MKV = "mkv",
+  WEBM = "webm",
 }
 
 const TranscodeCodecs = {
@@ -96,25 +101,18 @@ function streamTranscode(
 
 export function streamDirect(
   scene: Scene & { path: string },
-  req: Request,
+  _: Request,
   res: Response
 ): Response | void {
-  if (
-    scene.meta.container &&
-    scene.meta.videoCodec &&
-    scene.meta.audioCodec &&
-    isVideoValid(scene.meta.container, scene.meta.videoCodec) &&
-    isAudioValid(scene.meta.container, scene.meta.audioCodec)
-  ) {
-    const resolved = path.resolve(scene.path);
-    return res.sendFile(resolved);
+  if (!scene.meta.container || !canDirectPlay(scene.meta.container)) {
+    return res
+      .status(400)
+      .send(
+        `Video ${scene.meta.container}:${scene.meta.videoCodec}/${scene.meta.audioCodec} cannot be direct played in a browser`
+      );
   }
-
-  return res
-    .status(400)
-    .send(
-      `Video "${scene.meta.videoCodec}" and audio codec "${scene.meta.audioCodec}" are not valid for scene's container "${scene.meta.container}"`
-    );
+  const resolved = path.resolve(scene.path);
+  return res.sendFile(resolved);
 }
 
 export function transcodeWebm(
@@ -130,12 +128,18 @@ export function transcodeWebm(
     "-crf 30",
     "-b:v 0",
   ];
-  if (scene.meta.videoCodec && isVideoValid(FFProbeContainers.WEBM, scene.meta.videoCodec)) {
+  if (
+    scene.meta.videoCodec &&
+    videoIsValidForContainer(FFProbeContainers.WEBM, scene.meta.videoCodec)
+  ) {
     webmOptions.push("-c:v copy");
   } else {
     webmOptions.push(TranscodeCodecs[StreamTypes.WEBM].video);
   }
-  if (scene.meta.audioCodec && isAudioValid(FFProbeContainers.WEBM, scene.meta.audioCodec)) {
+  if (
+    scene.meta.audioCodec &&
+    audioIsValidForContainer(FFProbeContainers.WEBM, scene.meta.audioCodec)
+  ) {
     webmOptions.push("-c:a copy");
   } else {
     webmOptions.push(TranscodeCodecs[StreamTypes.WEBM].audio);
@@ -148,14 +152,14 @@ export function transcodeMkv(
   req: Request,
   res: Response
 ): Response | void {
-  if (scene.meta.container !== FFProbeContainers.MKV) {
+  if (FFProbeContainers.MKV !== scene.meta.container) {
     return res.status(400).send("Scene is not an mkv file");
   }
 
   const isMP4VideoValid =
-    scene.meta.videoCodec && isVideoValid(FFProbeContainers.MP4, scene.meta.videoCodec);
+    scene.meta.videoCodec && videoIsValidForContainer(FFProbeContainers.MP4, scene.meta.videoCodec);
   const isMP4AudioValid =
-    scene.meta.audioCodec && isAudioValid(FFProbeContainers.MP4, scene.meta.audioCodec);
+    scene.meta.audioCodec && audioIsValidForContainer(FFProbeContainers.MP4, scene.meta.audioCodec);
   console.log("mkv valid ? ", isMP4VideoValid, isMP4AudioValid);
 
   if (!isMP4VideoValid) {
