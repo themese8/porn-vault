@@ -7,10 +7,9 @@ import {
   audioIsValidForContainer,
   canDirectPlay,
   FFProbeContainers,
+  getDirectPlayMimeType,
   videoIsValidForContainer,
 } from "./ffprobe";
-
-const CONVERT_TIMEOUT = 5 * 1000;
 
 export enum StreamTypes {
   DIRECT = "direct",
@@ -34,7 +33,8 @@ function streamTranscode(
   scene: Scene & { path: string },
   req: Request,
   res: Response,
-  outputOptions: string[]
+  outputOptions: string[],
+  mimeType: string
 ): void {
   const startQuery = (req.query as { start?: string }).start || "0";
   const startSeconds = Number.parseFloat(startQuery);
@@ -44,30 +44,17 @@ function streamTranscode(
   res.writeHead(200, {
     "Accept-Ranges": "bytes",
     Connection: "keep-alive",
-    // "Keep-Alive": `timeout=${CONVERT_TIMEOUT / 1000}`,
     "Transfer-Encoding": "chunked",
     "Content-Disposition": "inline",
     "Content-Transfer-Enconding": "binary",
-    "Content-Type": "video/webm",
+    "Content-Type": mimeType,
   });
 
+  // Time out the request after 2mn to prevent accumulating
+  // too many ffmpeg processes. After that, the user should reload the page
+  req.setTimeout(20 * 1000);
+
   let command: ffmpeg.FfmpegCommand | null = null;
-  let killTimeout: NodeJS.Timeout;
-  let killed = false;
-
-  const killCommand = (reason: string) => {
-    if (command && !killed) {
-      killed = true;
-
-      clearTimeout(killTimeout);
-      console.log(`kill ${reason}`);
-      command.kill("SIGKILL");
-      res.end();
-    }
-  };
-  const startCommandTimeout = () => {
-    // killTimeout = setTimeout(() => killCommand("timed out"), CONVERT_TIMEOUT);
-  };
 
   console.log(scene.meta.container, scene.meta.videoCodec, scene.meta.audioCodec);
   console.log(">>>", outputOptions);
@@ -81,22 +68,16 @@ function streamTranscode(
     })
     .on("progress", () => {
       console.log("progress");
-      clearTimeout(killTimeout);
-      startCommandTimeout();
     })
     .on("end", function () {
-      console.log("file has been converted succesfully");
-      killCommand(">>end conversion");
+      console.log("file has been converted successfully");
     })
     .on("error", function (err) {
       // Error or stream closed because client request closed
-      console.log(`an error happened: ${err as string}`);
-      killCommand(">>error or req close");
+      console.log(`Request finished or an error happened: ${err as string}`);
     });
 
   command.pipe(res, { end: true });
-
-  startCommandTimeout();
 }
 
 export function streamDirect(
@@ -144,7 +125,13 @@ export function transcodeWebm(
   } else {
     webmOptions.push(TranscodeCodecs[StreamTypes.WEBM].audio);
   }
-  return streamTranscode(scene, req, res, webmOptions);
+  return streamTranscode(
+    scene,
+    req,
+    res,
+    webmOptions,
+    getDirectPlayMimeType(FFProbeContainers.WEBM)
+  );
 }
 
 export function transcodeMkv(
@@ -173,5 +160,5 @@ export function transcodeMkv(
 
   mp4Options.push(isMP4AudioValid ? "-c:a copy" : TranscodeCodecs[StreamTypes.MP4].audio);
 
-  return streamTranscode(scene, req, res, mp4Options);
+  return streamTranscode(scene, req, res, mp4Options, getDirectPlayMimeType(FFProbeContainers.MP4));
 }
