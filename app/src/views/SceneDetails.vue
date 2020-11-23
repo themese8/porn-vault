@@ -99,25 +99,22 @@
             <v-subheader>Labels</v-subheader>
           </div>
           <div class="pa-2">
-            <v-chip
-              label
-              class="mr-1 mb-1"
-              small
-              outlined
-              v-for="label in labelNames"
-              :key="label"
-              >{{ label }}</v-chip
+            <label-group
+              :limit="999"
+              :item="currentScene._id"
+              :value="currentScene.labels"
+              @input="updateSceneLabels"
             >
-
-            <v-chip
-              label
-              color="primary"
-              v-ripple
-              @click="openLabelSelector"
-              small
-              :class="`mr-1 mb-1 hover ${$vuetify.theme.dark ? 'black--text' : 'white--text'}`"
-              >+ Add</v-chip
-            >
+              <v-chip
+                label
+                color="primary"
+                v-ripple
+                @click="openLabelSelector"
+                small
+                :class="`mr-1 mb-1 hover ${$vuetify.theme.dark ? 'black--text' : 'white--text'}`"
+                >+ Add</v-chip
+              >
+            </label-group>
           </div>
           <v-divider />
           <v-btn text class="mt-2 text-none" color="primary" @click="openThumbnailDialog"
@@ -1093,11 +1090,10 @@ export default class SceneDetails extends Vue {
       });
   }
 
-  editLabels() {
-    if (!this.currentScene) return;
+  updateSceneLabels(labels: ILabel[]) {
+    if (!this.currentScene) return Promise.reject();
 
-    this.labelEditLoader = true;
-    ApolloClient.mutate({
+    return ApolloClient.mutate({
       mutation: gql`
         mutation($ids: [String!]!, $opts: SceneUpdateOpts!) {
           updateScenes(ids: $ids, opts: $opts) {
@@ -1112,16 +1108,25 @@ export default class SceneDetails extends Vue {
       variables: {
         ids: [this.currentScene._id],
         opts: {
-          labels: this.selectedLabels.map((i) => this.allLabels[i]).map((l) => l._id),
+          labels: labels.map((l) => l._id),
         },
       },
     })
       .then((res) => {
         sceneModule.setLabels(res.data.updateScenes[0].labels);
-        this.labelSelectorDialog = false;
       })
       .catch((err) => {
         console.error(err);
+      });
+  }
+
+  editLabels() {
+    if (!this.currentScene) return;
+
+    this.labelEditLoader = true;
+    return this.updateSceneLabels(this.selectedLabels.map((i) => this.allLabels[i]))
+      .then((res) => {
+        this.labelSelectorDialog = false;
       })
       .finally(() => {
         this.labelEditLoader = false;
@@ -1195,11 +1200,6 @@ export default class SceneDetails extends Vue {
     }).then((res) => {
       sceneModule.setRating(rating);
     });
-  }
-
-  get labelNames() {
-    if (!this.currentScene) return [];
-    return this.currentScene.labels.map((l) => l.name).sort();
   }
 
   get thumbnail() {
@@ -1329,6 +1329,8 @@ export default class SceneDetails extends Vue {
   }
 
   mounted() {
+    const hasModifier = (ev: KeyboardEvent) => ev.ctrlKey || ev.altKey || ev.shiftKey || ev.metaKey;
+
     hotkeys("n", () => {
       this.goToNextMarker();
       return false;
@@ -1340,17 +1342,22 @@ export default class SceneDetails extends Vue {
     });
 
     hotkeys("*", (ev) => {
-      if (ev.keyCode == 37) this.$refs.player.seekRel(-5);
-      // left
-      else if (ev.keyCode == 39) this.$refs.player.seekRel(5);
-      // right
-      else if (ev.keyCode == 70) this.$refs.player.toggleFullscreen();
-      // f
-      else if (ev.keyCode == 75) this.$refs.player.togglePlay(true);
-      // k
-      else if (ev.keyCode == 77) this.$refs.player.toggleMute(true);
-      // m
-      else if (ev.keyCode == 145) {
+      if (ev.keyCode == 37 && !hasModifier(ev)) {
+        // left
+        this.$refs.player.seekRel(-5);
+      } else if (ev.keyCode == 39 && !hasModifier(ev)) {
+        // right
+        this.$refs.player.seekRel(5);
+      } else if (ev.keyCode == 70 && !hasModifier(ev)) {
+        // f
+        this.$refs.player.toggleFullscreen();
+      } else if (ev.keyCode == 75 && !hasModifier(ev)) {
+        // k
+        this.$refs.player.togglePlay(true);
+      } else if (ev.keyCode == 77 && !hasModifier(ev)) {
+        // m
+        this.$refs.player.toggleMute(true);
+      } else if (ev.keyCode == 145) {
         // scroll lock
         this.$refs.player.panic();
       }

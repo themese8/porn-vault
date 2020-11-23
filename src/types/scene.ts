@@ -25,11 +25,14 @@ import { onSceneCreate } from "../plugins/events/scene";
 import { enqueueScene } from "../queue/processing";
 import { updateActors } from "../search/actor";
 import { indexScenes } from "../search/scene";
+import { mapAsync } from "../utils/async";
 import { mkdirpSync, readdirAsync, rimrafAsync, statAsync, unlinkAsync } from "../utils/fs/async";
 import { generateHash } from "../utils/hash";
 import * as logger from "../utils/logger";
-import { generateTimestampsAtIntervals, libraryPath } from "../utils/misc";
+import { arrayDiff, generateTimestampsAtIntervals } from "../utils/misc";
+import { libraryPath } from "../utils/path";
 import { removeExtension } from "../utils/string";
+import { ApplyActorLabelsEnum, ApplyStudioLabelsEnum } from "./../config/schema";
 import Actor from "./actor";
 import ActorReference from "./actor_reference";
 import Image from "./image";
@@ -141,7 +144,7 @@ export default class Scene {
   }
 
   static async onImport(videoPath: string, extractInfo = true): Promise<Scene> {
-    logger.log("Importing " + videoPath);
+    logger.log(`Importing ${videoPath}`);
     const config = getConfig();
 
     const sceneName = removeExtension(basename(videoPath));
@@ -204,7 +207,7 @@ export default class Scene {
 
     let actors = [] as Actor[];
 
-    if (extractInfo) {
+    if (extractInfo && config.matching.extractSceneActorsFromFilepath) {
       // Extract actors
       let extractedActors = [] as string[];
       extractedActors = await extractActors(videoPath);
@@ -214,39 +217,38 @@ export default class Scene {
 
       actors = await Actor.getBulk(extractedActors);
 
-      if (config.matching.applyActorLabels === true) {
+      if (
+        config.matching.applyActorLabels.includes(ApplyActorLabelsEnum.enum["event:scene:create"])
+      ) {
         logger.log("Applying actor labels to scene");
-        sceneLabels.push(
-          ...(
-            await Promise.all(
-              extractedActors.map(async (id) => {
-                const actor = await Actor.getById(id);
-                if (!actor) return [];
-                return (await Actor.getLabels(actor)).map((l) => l._id);
-              })
-            )
-          ).flat()
-        );
+        const actors = await Actor.getBulk(extractedActors);
+        const actorLabels = (
+          await mapAsync(actors, async (actor) => (await Actor.getLabels(actor)).map((l) => l._id))
+        ).flat();
+        sceneLabels.push(...actorLabels);
       }
     }
 
-    if (extractInfo) {
+    if (extractInfo && config.matching.extractSceneLabelsFromFilepath) {
       // Extract labels
       const extractedLabels = await extractLabels(videoPath);
       sceneLabels.push(...extractedLabels);
       logger.log(`Found ${extractedLabels.length} labels in scene path.`);
     }
 
-    if (extractInfo) {
+    if (extractInfo && config.matching.extractSceneStudiosFromFilepath) {
       // Extract studio
-      const extractedStudios = await extractStudios(videoPath);
-
-      scene.studio = extractedStudios[0] || null;
+      const extractedStudio = (await extractStudios(videoPath))[0] || null;
+      scene.studio = extractedStudio;
 
       if (scene.studio) {
         logger.log("Found studio in scene path");
 
-        if (config.matching.applyStudioLabels === true) {
+        if (
+          config.matching.applyStudioLabels.includes(
+            ApplyStudioLabelsEnum.enum["event:scene:create"]
+          )
+        ) {
           const studio = await Studio.getById(scene.studio);
 
           if (studio) {
@@ -257,14 +259,14 @@ export default class Scene {
       }
     }
 
-    if (extractInfo) {
+    if (extractInfo && config.matching.extractSceneMoviesFromFilepath) {
       // Extract movie
-      const extractedMovies = await extractMovies(videoPath);
+      const extractedMovie = (await extractMovies(videoPath))[0] || null;
 
-      if (extractedMovies.length) {
+      if (extractedMovie) {
         logger.log("Found movie in scene path");
 
-        const movie = <Movie>await Movie.getById(extractedMovies[0]);
+        const movie = <Movie>await Movie.getById(extractedMovie);
         const scenes = (await Movie.getScenes(movie)).map((sc) => sc._id);
         scenes.push(scene._id);
         await Movie.setScenes(movie, scenes);
@@ -314,7 +316,7 @@ export default class Scene {
   }
 
   static async watch(scene: Scene, time = Date.now()): Promise<void> {
-    logger.log("Watch scene " + scene._id);
+    logger.log(`Watch scene ${scene._id}`);
     const watchItem = new SceneView(scene._id, time);
     await viewCollection.upsert(watchItem._id, watchItem);
     await indexScenes([scene]);
@@ -324,7 +326,7 @@ export default class Scene {
     const watches = await SceneView.getByScene(scene._id);
     const last = watches[watches.length - 1];
     if (last) {
-      logger.log("Remove most recent view of scene " + scene._id);
+      logger.log(`Remove most recent view of scene ${scene._id}`);
       await viewCollection.remove(last._id);
     }
     await indexScenes([scene]);
@@ -335,7 +337,7 @@ export default class Scene {
     try {
       if (scene.path) await unlinkAsync(scene.path);
     } catch (error) {
-      logger.warn("Could not delete source file for scene " + scene._id);
+      logger.warn(`Could not delete source file for scene ${scene._id}`);
     }
   }
 
@@ -381,17 +383,17 @@ export default class Scene {
   }
 
   static async setActors(scene: Scene, actorIds: string[]): Promise<void> {
-    const references = await ActorReference.getByItem(scene._id);
+    const oldRefs = await ActorReference.getByItem(scene._id);
 
-    const oldActorReferences = references.map((r) => r._id);
+    const { removed, added } = arrayDiff(oldRefs, [...new Set(actorIds)], "actor", (l) => l);
 
-    for (const id of oldActorReferences) {
-      await actorReferenceCollection.remove(id);
+    for (const oldRef of removed) {
+      await actorReferenceCollection.remove(oldRef._id);
     }
 
-    for (const id of [...new Set(actorIds)]) {
+    for (const id of added) {
       const actorReference = new ActorReference(scene._id, id, "scene");
-      logger.log("Adding actor to scene: " + JSON.stringify(actorReference));
+      logger.log(`Adding actor to scene: ${JSON.stringify(actorReference)}`);
       await actorReferenceCollection.upsert(actorReference._id, actorReference);
     }
   }
@@ -422,7 +424,7 @@ export default class Scene {
   }
 
   constructor(name: string) {
-    this._id = "sc_" + generateHash();
+    this._id = `sc_${generateHash()}`;
     this.name = name.trim();
   }
 
@@ -598,7 +600,7 @@ export default class Scene {
     const config = getConfig();
 
     const image = new Image(`${scene.name} (thumbnail)`);
-    const imagePath = path.join(libraryPath("thumbnails/"), image._id) + ".jpg";
+    const imagePath = `${path.join(libraryPath("thumbnails/"), image._id)}.jpg`;
     image.path = imagePath;
     image.scene = scene._id;
 

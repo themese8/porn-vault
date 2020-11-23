@@ -17,8 +17,8 @@ import Studio from "../types/studio";
 import SceneView from "../types/watch";
 import { mkdirpSync } from "../utils/fs/async";
 import * as logger from "../utils/logger";
-import { libraryPath } from "../utils/misc";
-import { Izzy } from "./internal/index";
+import { libraryPath } from "../utils/path";
+import { Izzy } from "./internal";
 
 mkdirpSync("backups/");
 mkdirpSync("tmp/");
@@ -58,8 +58,7 @@ export async function loadImageStore(): Promise<void> {
 export async function loadStores(): Promise<void> {
   const crossReferencePath = libraryPath("cross_references.db");
   if (existsSync(crossReferencePath)) {
-    logger.error("cross_references.db found, are you using an outdated library?");
-    process.exit(1);
+    throw new Error("cross_references.db found, are you using an outdated library?");
   }
 
   try {

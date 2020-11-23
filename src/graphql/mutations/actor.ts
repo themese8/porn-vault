@@ -1,5 +1,6 @@
+import { getConfig } from "../../config";
+import { ApplyActorLabelsEnum } from "../../config/schema";
 import { actorCollection } from "../../database";
-import { isSingleWord } from "../../extractor";
 import { onActorCreate } from "../../plugins/events/actor";
 import { index as actorIndex, indexActors, updateActors } from "../../search/actor";
 import Actor from "../../types/actor";
@@ -51,19 +52,16 @@ async function runActorPlugins(ids: string[]) {
 }
 
 export default {
-  async runAllActorPlugins(): Promise<Actor[]> {
-    const ids = (await Actor.getAll()).map((a) => a._id);
-    return runActorPlugins(ids);
-  },
-
-  async runActorPlugins(_: unknown, { ids }: { ids: string[] }): Promise<Actor[]> {
-    return runActorPlugins(ids);
+  async runActorPlugins(_: unknown, { id }: { id: string }): Promise<Actor> {
+    const result = await runActorPlugins([id]);
+    return result[0];
   },
 
   async addActor(
     _: unknown,
     args: { name: string; aliases?: string[]; labels?: string[] }
   ): Promise<Actor> {
+    const config = getConfig();
     let actor = new Actor(args.name, args.aliases);
 
     let actorLabels = [] as string[];
@@ -80,32 +78,12 @@ export default {
     await Actor.setLabels(actor, actorLabels);
     await actorCollection.upsert(actor._id, actor);
 
-    if (isSingleWord(actor.name)) {
-      // Skip
-    } else {
-      await Actor.attachToExistingScenes(actor, actorLabels);
-
-      /* for (const image of await Image.getAll()) {
-        if (isBlacklisted(image.name)) continue;
-        if (isMatchingItem(image.name, actor, true)) {
-          if (config.matching.applyActorLabels === true) {
-            const imageLabels = (await Image.getLabels(image)).map((l) => l._id);
-            await Image.setLabels(image, imageLabels.concat(actorLabels));
-            logger.log(`Applied actor labels of new actor to ${image._id}`);
-          }
-          await Image.setActors(
-            image,
-            (await Image.getActors(image)).map((l) => l._id).concat(actor._id)
-          );
-          try {
-            await updateImages([image]);
-          } catch (error) {
-            logger.error(error.message);
-          }
-          logger.log(`Updated actors of ${image._id}`);
-        }
-      } */
-    }
+    await Actor.attachToScenes(
+      actor,
+      config.matching.applyActorLabels.includes(ApplyActorLabelsEnum.enum["event:actor:create"])
+        ? actorLabels
+        : []
+    );
 
     await indexActors([actor]);
 
@@ -116,6 +94,7 @@ export default {
     _: unknown,
     { ids, opts }: { ids: string[]; opts: IActorUpdateOpts }
   ): Promise<Actor[]> {
+    const config = getConfig();
     const updatedActors = [] as Actor[];
 
     for (const id of ids) {
@@ -192,6 +171,13 @@ export default {
       } else {
         throw new Error(`Actor ${id} not found`);
       }
+
+      await Actor.attachToScenes(
+        actor,
+        config.matching.applyActorLabels.includes(ApplyActorLabelsEnum.enum["event:actor:update"])
+          ? (await Actor.getLabels(actor)).map((l) => l._id)
+          : []
+      );
     }
 
     await updateActors(updatedActors);
