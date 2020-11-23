@@ -169,11 +169,7 @@ export function transcodeMkv(
     return res.status(400).send(`Audio codec "${scene.meta.audioCodec}" is not valid for mp4`);
   }
 
-  const mp4Options = [
-    "-f mp4",
-    TranscodeCodecs[StreamTypes.MP4].video,
-    "-movflags frag_keyframe+empty_moov",
-  ];
+  const mp4Options = ["-f mp4", "-c:v copy", "-movflags frag_keyframe+empty_moov"];
 
   mp4Options.push(isMP4AudioValid ? "-c:a copy" : TranscodeCodecs[StreamTypes.MP4].audio);
 

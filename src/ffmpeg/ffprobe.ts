@@ -71,9 +71,9 @@ const BrowserCodecCompatMap: PartialRecord<
 export const getDirectPlayMimeType = (container: FFProbeContainers): string =>
   BrowserCodecCompatMap[container]?.mimeType || "";
 
-export const DIRECT_PLAY_CONTAINERS: FFProbeContainers[] = Object.keys(BrowserCodecCompatMap).map(
-  (v) => Object.keys(FFProbeContainers).find((k) => FFProbeContainers[k] === v) as FFProbeContainers
-);
+export const DIRECT_PLAY_CONTAINERS: FFProbeContainers[] = Object.keys(
+  BrowserCodecCompatMap
+) as FFProbeContainers[];
 
 export const canDirectPlay = (container: FFProbeContainers): boolean =>
   // MKV can be direct played as long as the browser thinks it's mp4
