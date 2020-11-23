@@ -5,7 +5,6 @@ import path from "path";
 import Scene from "../types/scene";
 import {
   audioIsValidForContainer,
-  canDirectPlay,
   FFProbeContainers,
   getDirectPlayMimeType,
   videoIsValidForContainer,
@@ -85,13 +84,6 @@ export function streamDirect(
   _: Request,
   res: Response
 ): Response | void {
-  if (!scene.meta.container || !canDirectPlay(scene.meta.container)) {
-    return res
-      .status(400)
-      .send(
-        `Video ${scene.meta.container}:${scene.meta.videoCodec}/${scene.meta.audioCodec} cannot be direct played in a browser`
-      );
-  }
   const resolved = path.resolve(scene.path);
   return res.sendFile(resolved);
 }

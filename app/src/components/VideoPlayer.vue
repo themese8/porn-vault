@@ -135,22 +135,17 @@
             </div>
           </v-fade-transition>
         </div>
-        <video
+        <TranscodablePlayer
           @click="togglePlay(false)"
           @dblclick="toggleFullscreen"
-          @loadeddata="getCurrentStream"
-          @timeupdate="timeUpdate"
-          id="video"
+          @progress="onProgressChange"
+          @buffered="onBufferedChange"
+          :streamTypes="streamTypes"
+          id="player"
           class="video"
-          ref="video"
+          ref="player"
         >
-          <source
-            v-for="streamType in streamTypes"
-            :key="streamType.type"
-            :src="streamType.url"
-            :type="streamType.mime"
-          />
-        </video>
+        </TranscodablePlayer>
       </div>
     </v-hover>
     <v-card
@@ -165,25 +160,23 @@ import { Component, Vue, Prop } from "vue-property-decorator";
 import moment from "moment";
 import hotkeys from "hotkeys-js";
 import { stringify } from "querystring";
+import TranscodablePlayer from "./TranscodablePlayer.vue";
+import { BufferedRange, StreamType } from "../types/video";
 
 const IS_MUTED = "player_is_muted";
 const VOLUME = "player_volume";
 
-interface BufferedRange {
-  start: number;
-  end: number;
-}
-
-interface StreamType {
-  label: string;
-  mime: string;
-  type: string;
-  transcode: boolean;
-  url: string;
-}
-
 @Component
 export default class VideoPlayer extends Vue {
+  $refs!: {
+    player: TranscodablePlayer;
+    videoWrapper: HTMLElement & {
+      mozRequestFullScreen?(): Promise<void>;
+      webkitRequestFullscreen?(): Promise<void>;
+      msRequestFullscreen?(): Promise<void>;
+    };
+  };
+
   @Prop(Array) resolutions!: { label: string; width: number; height: number }[];
   @Prop(Array) streamTypes!: StreamType[];
   @Prop(Number) duration!: number;
@@ -195,12 +188,9 @@ export default class VideoPlayer extends Vue {
   noticeTimeout: null | number = null;
   previewX = 0;
   progress = 0;
-  buffered = null as any;
+  bufferedRanges: BufferedRange[] = [];
   isPlaying = false;
   showPoster = true;
-
-  transcodeOffset = 0;
-  currentStream: StreamType | undefined;
 
   isVolumeDragging = false;
   isMuted = localStorage.getItem(IS_MUTED) === "true";
@@ -214,7 +204,7 @@ export default class VideoPlayer extends Vue {
   paniced = false;
 
   mounted() {
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       vid.volume = this.volume;
       vid.muted = this.isMuted;
@@ -234,17 +224,10 @@ export default class VideoPlayer extends Vue {
     hotkeys.unbind("down", this.focusedDecrementVolume);
   }
 
-  getCurrentStream() {
-    const vid = <HTMLVideoElement>this.$refs.video;
-    if (vid) {
-      this.currentStream = this.streamTypes.find((type) => vid.currentSrc.startsWith(type.url));
-    }
-  }
-
   panic() {
     this.paniced = true;
     this.pause();
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       vid.src = "";
     }
@@ -274,11 +257,7 @@ export default class VideoPlayer extends Vue {
   }
 
   async toggleFullscreen() {
-    const videoWrapper = this.$refs.videoWrapper as HTMLElement & {
-      mozRequestFullScreen?(): Promise<void>;
-      webkitRequestFullscreen?(): Promise<void>;
-      msRequestFullscreen?(): Promise<void>;
-    };
+    const videoWrapper = this.$refs.videoWrapper;
 
     if (!videoWrapper) return;
 
@@ -307,7 +286,7 @@ export default class VideoPlayer extends Vue {
   setVolume(volume: number, notice = false) {
     this.startControlsTimeout();
 
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       if (volume <= 0.02) {
         this.mute();
@@ -366,20 +345,6 @@ export default class VideoPlayer extends Vue {
     return this.percentOfVideo(this.progress);
   }
 
-  get bufferedRanges() {
-    if (!this.buffered) {
-      return [];
-    }
-    const bufferedRanges: BufferedRange[] = [];
-    for (let i = 0; i < this.buffered.length; i++) {
-      bufferedRanges.push({
-        start: this.transcodeOffset + this.buffered.start(i),
-        end: this.transcodeOffset + this.buffered.end(i),
-      });
-    }
-    return bufferedRanges;
-  }
-
   seekRel(delta: number, text?: string) {
     this.startControlsTimeout();
     this.notice(`Seek: ${delta > 0 ? "+" : ""}${delta.toString()}s`);
@@ -388,36 +353,14 @@ export default class VideoPlayer extends Vue {
   }
 
   async seek(time: number, text?: string, play = false) {
-    const vid = <HTMLVideoElement>this.$refs.video;
-    if (vid) {
-      console.log(this.transcodeOffset, vid.currentTime, JSON.stringify(this.bufferedRanges));
-      console.log("req ", time);
-      if (
-        !this.currentStream?.transcode ||
-        (this.transcodeOffset < time &&
-          this.bufferedRanges.find((range) => range.start <= time && range.end >= time))
-      ) {
-        console.log("no transcode or is buffered, go to ", time - this.transcodeOffset);
-        vid.pause();
-        vid.currentTime = time - this.transcodeOffset;
-      } else {
-        console.log("is transcode, restart at ", time);
-        vid.pause();
-        vid.currentTime = 0;
-        const src = new URL(vid.currentSrc);
-        src.searchParams.set("start", time.toString());
-        vid.src = src.toString();
-        this.transcodeOffset = time;
-        vid.load();
-      }
+    this.$refs.player.seek(time);
 
-      if (play) {
-        await this.play();
-      }
+    if (play) {
+      await this.play();
+    }
 
-      if (text) {
-        this.notice(text);
-      }
+    if (text) {
+      this.notice(text);
     }
   }
 
@@ -442,7 +385,7 @@ export default class VideoPlayer extends Vue {
   }
 
   async play(notice = false) {
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       if (notice) this.notice("Play");
 
@@ -453,29 +396,21 @@ export default class VideoPlayer extends Vue {
     }
   }
 
-  timeUpdate(ev) {
-    const vid = <HTMLVideoElement>this.$refs.video;
-    if (vid) {
-      console.log(
-        "time update off",
-        this.transcodeOffset,
-        "vid time ",
-        vid.currentTime,
-        " total ",
-        vid.currentTime + this.transcodeOffset
-      );
-      this.progress = this.transcodeOffset + vid.currentTime;
-      this.buffered = vid.buffered;
-    }
+  onProgressChange(value: number): void {
+    this.progress = value;
+  }
+
+  onBufferedChange(bufferedRanges: BufferedRange[]): void {
+    this.bufferedRanges = bufferedRanges;
   }
 
   isPaused() {
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     return vid && vid.paused;
   }
 
   pause(notice = false) {
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       if (notice) this.notice("Paused");
 
@@ -485,7 +420,7 @@ export default class VideoPlayer extends Vue {
   }
 
   isVideoFocused() {
-    const videoWrapper = <Element>this.$refs.videoWrapper;
+    const videoWrapper = this.$refs.videoWrapper;
     return (
       videoWrapper &&
       document.activeElement &&
@@ -517,7 +452,7 @@ export default class VideoPlayer extends Vue {
   togglePlay(notice = false) {
     this.startControlsTimeout();
 
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       if (vid.paused) {
         this.play(notice);
@@ -528,7 +463,7 @@ export default class VideoPlayer extends Vue {
   }
 
   mute(notice = false) {
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       if (notice) this.notice("Muted");
 
@@ -539,7 +474,7 @@ export default class VideoPlayer extends Vue {
   }
 
   unmute(notice = false) {
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       if (notice) this.notice("Unmuted");
 
@@ -552,7 +487,7 @@ export default class VideoPlayer extends Vue {
   toggleMute(notice = false) {
     this.startControlsTimeout();
 
-    const vid = <HTMLVideoElement>this.$refs.video;
+    const vid = this.$refs.player.getVideo();
     if (vid) {
       if (vid.muted) {
         this.unmute(notice);

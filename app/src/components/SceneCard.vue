@@ -12,7 +12,13 @@
                 style="position: absolute: top: 0; left: 0; width: 100%; height: 100%"
               >
                 <div style="width: 100%; height: 100%; position: relative">
-                  <video class="video-insert" ref="video" autoplay muted :src="videoPath" />
+                  <TranscodablePlayer
+                    class="video-insert"
+                    ref="player"
+                    autoplay="true"
+                    muted="muted"
+                    :streamTypes="streamTypes"
+                  ></TranscodablePlayer>
                 </div>
               </div>
             </v-fade-transition>
@@ -104,14 +110,20 @@ import { contextModule } from "../store/context";
 import { ensureDarkColor } from "../util/color";
 import Color from "color";
 import SceneMixin from "../mixins/scene";
+import TranscodablePlayer from "./TranscodablePlayer.vue";
 
 @Component
 export default class SceneCard extends Mixins(SceneMixin) {
+  $refs!: {
+    player: TranscodablePlayer;
+  };
+
   @Prop(Object) value!: IScene;
   @Prop({ default: true }) showLabels!: boolean;
 
   playIndex = 0;
   playInterval = null as NodeJS.Timeout | null;
+  initialStartIndex = 60;
 
   get complementary() {
     if (this.cardColor) return Color(this.cardColor).negate().hex() + " !important";
@@ -128,26 +140,31 @@ export default class SceneCard extends Mixins(SceneMixin) {
     return contextModule.scenePreviewOnMouseHover;
   }
 
-  mouseenter() {
+  async mouseenter() {
     if (this.playInterval) clearInterval(this.playInterval);
 
-    this.playIndex = 60;
-    // @ts-ignore
-    this.$refs.video.currentTime = this.playIndex;
+    this.playIndex = this.initialStartIndex;
+    // Wait for video to render before playing
+    await this.$nextTick();
+    // We didn't need do an initial seek() since we passed the 'start' prop
+    this.$refs.player.getVideo()?.play();
 
     this.playInterval = setInterval(() => {
       this.playIndex += 180;
 
-      if (this.playIndex > this.value.meta.duration) this.playIndex = 0;
-      // @ts-ignore
-      if (this.$refs.video) this.$refs.video.currentTime = this.playIndex;
+      if (this.playIndex > this.value.meta.duration) {
+        this.playIndex = this.initialStartIndex;
+      }
+      if (this.$refs.player) {
+        this.$refs.player.seek(this.playIndex);
+        this.$refs.player.getVideo()?.play();
+      }
     }, 5000);
   }
 
   mouseleave() {
     try {
-      // @ts-ignore
-      this.$refs.video.setAttribute("src", "");
+      this.$refs.player.getVideo()?.pause();
     } catch (error) {}
     if (this.playInterval) {
       // console.log("stopping video");
@@ -155,10 +172,13 @@ export default class SceneCard extends Mixins(SceneMixin) {
     }
   }
 
+  mounted() {
+    this.initialStartIndex = this.value.meta.duration > 5 ? 60 : 5;
+  }
+
   beforeDestroy() {
     try {
-      // @ts-ignore
-      this.$refs.video.setAttribute("src", "");
+      this.$refs.player.getVideo()?.pause();
     } catch (error) {}
   }
 

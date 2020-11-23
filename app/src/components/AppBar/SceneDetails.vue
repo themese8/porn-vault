@@ -303,7 +303,7 @@ export default class SceneToolbar extends Vue {
 
   get currentSceneURL() {
     if (this.currentScene)
-      return `${serverBase}/media/scene/${this.currentScene._id}?password=${localStorage.getItem(
+      return `${serverBase}/media/scene/${this.currentScene._id}/direct?password=${localStorage.getItem(
         "password"
       )}`;
   }

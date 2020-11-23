@@ -71,6 +71,7 @@ export default {
 
     streams.unshift({
       label: "direct stream",
+      // TODO: this mime type should be handled by 'mime' since we don't check it's container
       mime: scene.meta.container ? getDirectPlayMimeType(scene.meta.container) : "",
       type: StreamTypes.DIRECT,
       transcode: false,

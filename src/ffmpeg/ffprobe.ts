@@ -16,13 +16,14 @@ export enum FFProbeAudioCodecs {
 }
 
 export enum FFProbeContainers {
-  // FFprobe can't differentiate between these, but it does not matter
+  // FFprobe cannot differentiate between these, but it does not matter
   // in the browser
   MP4 = "mov,mp4,m4a,3gp,3g2,mj2",
   M4V = "mov,mp4,m4a,3gp,3g2,mj2",
   MOV = "mov,mp4,m4a,3gp,3g2,mj2",
   // Other streamable/transcodable containers
   MKV = "matroska",
+  // FFprobe cannot differentiate mkv/web, we'll have to do it manually
   WEBM = "matroska,webm",
   AVI = "avi",
   WMV = "asf",
@@ -70,14 +71,6 @@ const BrowserCodecCompatMap: PartialRecord<
 
 export const getDirectPlayMimeType = (container: FFProbeContainers): string =>
   BrowserCodecCompatMap[container]?.mimeType || "";
-
-export const DIRECT_PLAY_CONTAINERS: FFProbeContainers[] = Object.keys(
-  BrowserCodecCompatMap
-) as FFProbeContainers[];
-
-export const canDirectPlay = (container: FFProbeContainers): boolean =>
-  // MKV can be direct played as long as the browser thinks it's mp4
-  container === FFProbeContainers.MKV || DIRECT_PLAY_CONTAINERS.includes(container);
 
 /**
  * @param container - file container

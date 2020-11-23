@@ -124,9 +124,20 @@ export default class SceneMixin extends Vue {
   }
 
   get videoPath() {
-    if (this.value)
-      return `${serverBase}/media/scene/${this.value._id}?password=${localStorage.getItem(
+    if (this.value) {
+      return `${serverBase}/media/scene/${this.value._id}/direct?password=${localStorage.getItem(
         "password"
       )}`;
+    }
+  }
+
+  get streamTypes() {
+    if (this.value) {
+      const base = `${serverBase}/media/scene/${this.value._id}`;
+      return this.value.streamTypes.map((streamType) => ({
+        ...streamType,
+        url: `${base}/${streamType.type}?password=${localStorage.getItem("password")}`,
+      }));
+    }
   }
 }
