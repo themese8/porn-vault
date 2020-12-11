@@ -7,6 +7,8 @@ import Image from "../types/image";
 import Scene from "../types/scene";
 import * as logger from "../utils/logger";
 
+import ffmpeg from "fluent-ffmpeg";
+
 const router = Router();
 
 router.get("/scene/:scene", async (req, res, next) => {
@@ -15,6 +17,40 @@ router.get("/scene/:scene", async (req, res, next) => {
   if (scene && scene.path) {
     const resolved = path.resolve(scene.path);
     res.sendFile(resolved);
+  } else next(404);
+});
+
+router.get("/scene/stream/:scene", async (req, res, next) => {
+  const scene = await Scene.getById(req.params.scene);
+
+  console.log(req.headers);
+
+  if (scene && scene.path) {
+    const resolved = path.resolve(scene.path);
+
+    res.setHeader("Content-Type", "video/mp4");
+
+    let seek = 0;
+
+    if (typeof req.query.seek !== "undefined") {
+      seek = parseInt(req.query.seek);
+    }
+
+    ffmpeg(resolved)
+      .withAudioCodec("aac")
+      .toFormat("mp4")
+      .seek(seek)
+      .on("end", function () {
+        logger.log("ffmpeg: file has been converted successfully");
+      })
+      .on("error", function (err) {
+        logger.log(err);
+        next(err);
+      })
+      .addOption("-movflags", "frag_keyframe+empty_moov+faststart")
+      .addOption("-preset", "veryfast")
+      .addOption("-crf", "18")
+      .pipe(res);
   } else next(404);
 });
 

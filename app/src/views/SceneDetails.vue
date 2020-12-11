@@ -851,7 +851,7 @@ export default class SceneDetails extends Vue {
 
   get videoPath() {
     if (this.currentScene)
-      return `${serverBase}/media/scene/${this.currentScene._id}?password=${localStorage.getItem(
+      return `${serverBase}/media/scene/stream/${this.currentScene._id}?password=${localStorage.getItem(
         "password"
       )}`;
   }
