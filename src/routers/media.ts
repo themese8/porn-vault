@@ -1,13 +1,15 @@
+import { spawnSync } from "child_process";
 import { Router } from "express";
+import ffmpeg from "fluent-ffmpeg";
 import { existsSync } from "fs";
+import { EOL } from "os";
 import path from "path";
 
 import { getConfig } from "../config";
 import Image from "../types/image";
 import Scene from "../types/scene";
 import * as logger from "../utils/logger";
-
-import ffmpeg from "fluent-ffmpeg";
+import { convertToSegments } from "../utils/media";
 
 const router = Router();
 
@@ -20,36 +22,97 @@ router.get("/scene/:scene", async (req, res, next) => {
   } else next(404);
 });
 
-router.get("/scene/stream/:scene", async (req, res, next) => {
+router.get("/scene/stream/:scene/playlist.m3u8", async (req, res, next) => {
   const scene = await Scene.getById(req.params.scene);
-
-  console.log(req.headers);
 
   if (scene && scene.path) {
     const resolved = path.resolve(scene.path);
 
-    res.setHeader("Content-Type", "video/mp4");
+    // fluent-ffmpeg ffprobe does not support custom arguments, that's why need to use regular execSync
+    const probeCommand = spawnSync(getConfig().binaries.ffprobe, [
+      "-v",
+      "error", // Hide debug information
+      "-skip_frame",
+      "nokey",
+      "-show_entries",
+      "frame=pkt_pts_time", // List all I frames
+      "-show_entries",
+      "format=duration",
+      "-show_entries",
+      "stream=duration,width,height",
+      "-select_streams",
+      "v", // Video stream only, we're not interested in audio
+      "-of",
+      "json",
+      resolved,
+    ]);
+    const probeResult = JSON.parse(probeCommand.stdout.toString());
 
-    let seek = 0;
+    if (probeResult) {
+      const duration =
+        parseFloat(probeResult.streams[0].duration) || parseFloat(probeResult.format.duration);
 
-    if (typeof req.query.seek !== "undefined") {
-      seek = parseInt(req.query.seek);
+      const rawIFrames = Float64Array.from(
+        probeResult.frames
+          .map((frame: Record<string, string>) => parseFloat(frame.pkt_pts_time))
+          .filter((time: number) => !isNaN(time))
+      );
+
+      const breakpoints = convertToSegments(rawIFrames, duration);
+
+      req.app.get("cache").set(req.params.scene + "-breakpoints", breakpoints);
+
+      const segments = new Array((breakpoints.length - 1) * 2);
+      for (let i = 1; i < breakpoints.length; i++) {
+        segments[i * 2 - 2] = `#EXTINF:${(breakpoints[i] - breakpoints[i - 1]).toFixed(3)}`;
+        segments[i * 2 - 1] = `${i.toString(16)}.ts`;
+      }
+      res.send(
+        [
+          "#EXTM3U",
+          "#EXT-X-PLAYLIST-TYPE:VOD",
+          "#EXT-X-TARGETDURATION:4.75",
+          "#EXT-X-VERSION:4",
+          "#EXT-X-MEDIA-SEQUENCE:0", // I have no idea why this is needed.
+          ...segments,
+          "#EXT-X-ENDLIST",
+        ].join(EOL)
+      );
     }
+  }
+});
+
+router.get("/scene/stream/:scene/:segment.ts", async (req, res, next) => {
+  const scene = await Scene.getById(req.params.scene);
+
+  if (scene && scene.path) {
+    const resolved = path.resolve(scene.path);
+
+    const breakpoints: Float64Array = req.app.get("cache").get(`${req.params.scene}-breakpoints`);
+
+    const segmentIndex = parseInt(req.params.segment, 16);
+
+    const startAt = segmentIndex;
 
     ffmpeg(resolved)
       .withAudioCodec("aac")
-      .toFormat("mp4")
-      .seek(seek)
+      .seek(breakpoints[startAt])
+      .duration(breakpoints[startAt + 1] - breakpoints[startAt])
       .on("end", function () {
-        logger.log("ffmpeg: file has been converted successfully");
+        logger.log("ffmpeg: segment has been converted successfully");
       })
       .on("error", function (err) {
         logger.log(err);
         next(err);
       })
+      .addOption("-c:v", "libx264")
       .addOption("-movflags", "frag_keyframe+empty_moov+faststart")
       .addOption("-preset", "veryfast")
       .addOption("-crf", "18")
+      .addOption("-force_key_frames", breakpoints.join(","))
+      .addOption("-copyts")
+      .addOption("-f", "mpegts")
+      .addOption("-output_ts_offset", breakpoints[startAt].toString())
       .pipe(res);
   } else next(404);
 });

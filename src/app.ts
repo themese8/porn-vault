@@ -76,6 +76,8 @@ export function createVault(): Vault {
   app.use(express.json());
   app.use(cors);
 
+  app.set("cache", cache);
+
   app.use(httpLog);
 
   app.get("/", async (req, res, next) => {

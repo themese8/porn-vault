@@ -27,8 +27,8 @@
             <MarkerItem
               style="width: 100%"
               @jump="
-                $refs.player.seek(marker.time, marker.name);
-                $refs.player.play();
+                $refs.player.plyr.currentTime = marker.time;
+                $refs.player.plyr.play();
               "
               @delete="removeMarker(marker._id)"
               :marker="marker"
@@ -49,7 +49,7 @@
           <div class="mt-3">
             <MarkerItem
               style="width: 100%"
-              @jump="$refs.player.seek(marker.time, marker.name)"
+              @jump="$refs.player.plyr.currentTime = marker.time"
               @delete="removeMarker(marker._id)"
               :marker="marker"
               v-for="marker in markers"
@@ -743,7 +743,7 @@ export default class SceneDetails extends Vue {
       variables: {
         // @ts-ignore
         id: this.currentScene._id,
-        sec: this.$refs.player.currentProgress(),
+        sec: this.$refs.player.plyr.currentTime,
       },
     })
       .then((res) => {
@@ -808,7 +808,7 @@ export default class SceneDetails extends Vue {
       variables: {
         scene: this.currentScene._id,
         name: this.markerName,
-        time: Math.floor(this.$refs.player.currentProgress()),
+        time: Math.floor(this.$refs.player.plyr.currentTime),
         rating: this.markerRating,
         favorite: this.markerFavorite,
         bookmark: this.markerBookmark ? Date.now() : null,
@@ -828,12 +828,12 @@ export default class SceneDetails extends Vue {
   }
 
   currentTimeFormatted() {
-    if (this.$refs.player) return this.formatTime(this.$refs.player.currentProgress());
+    if (this.$refs.player) return this.formatTime(this.$refs.player.plyr.currentTime);
   }
 
   openMarkerDialog() {
     if (!this.allLabels.length) this.loadLabels();
-    this.$refs.player.pause();
+    this.$refs.player.plyr.pause();
     this.markerDialog = true;
   }
 
@@ -851,7 +851,7 @@ export default class SceneDetails extends Vue {
 
   get videoPath() {
     if (this.currentScene)
-      return `${serverBase}/media/scene/stream/${this.currentScene._id}?password=${localStorage.getItem(
+      return `${serverBase}/media/scene/stream/${this.currentScene._id}/playlist.m3u8?password=${localStorage.getItem(
         "password"
       )}`;
   }
@@ -1280,8 +1280,8 @@ export default class SceneDetails extends Vue {
       setTimeout(() => {
         if (this.$route.query.t) {
           const time = parseInt(<string>this.$route.query.t);
-          this.$refs.player.seek(time, <string>this.$route.query.mk_name);
-          this.$refs.player.play();
+          this.$refs.player.plyr.currentTime = time;
+          this.$refs.player.plyr.play();
         }
       }, 500);
     });
@@ -1292,7 +1292,7 @@ export default class SceneDetails extends Vue {
   }
 
   goToPreviousMarker() {
-    const progress = this.$refs.player.currentProgress();
+    const progress = this.$refs.player.plyr.currentTime;
     const prevMarkers = this.markers.filter((m) => m.time < progress - 5);
     if (prevMarkers.length) {
       const prevMarker = prevMarkers.pop() as {
@@ -1300,14 +1300,14 @@ export default class SceneDetails extends Vue {
         name: string;
         time: number;
       };
-      this.$refs.player.seek(prevMarker.time, prevMarker.name);
-    } else this.$refs.player.seek(0);
+      this.$refs.player.plyr.currentTime = prevMarker.time;
+    } else this.$refs.player.plyr.currentTime = 0;
   }
 
   goToNextMarker() {
-    const progress = this.$refs.player.currentProgress();
+    const progress = this.$refs.player.plyr.currentTime;
     const nextMarker = this.markers.find((m) => m.time > progress);
-    if (nextMarker) this.$refs.player.seek(nextMarker.time, nextMarker.name);
+    if (nextMarker) this.$refs.player.plyr.currentTime = nextMarker.time;
   }
 
   destroyed() {
@@ -1330,22 +1330,7 @@ export default class SceneDetails extends Vue {
     });
 
     hotkeys("*", (ev) => {
-      if (ev.keyCode == 37 && !hasModifier(ev)) {
-        // left
-        this.$refs.player.seekRel(-5);
-      } else if (ev.keyCode == 39 && !hasModifier(ev)) {
-        // right
-        this.$refs.player.seekRel(5);
-      } else if (ev.keyCode == 70 && !hasModifier(ev)) {
-        // f
-        this.$refs.player.toggleFullscreen();
-      } else if (ev.keyCode == 75 && !hasModifier(ev)) {
-        // k
-        this.$refs.player.togglePlay(true);
-      } else if (ev.keyCode == 77 && !hasModifier(ev)) {
-        // m
-        this.$refs.player.toggleMute(true);
-      } else if (ev.keyCode == 145) {
+      if (ev.keyCode == 145) {
         // scroll lock
         this.$refs.player.panic();
       }
@@ -1354,11 +1339,11 @@ export default class SceneDetails extends Vue {
     window.onblur = () => {
       if (
         this.$refs.player &&
-        !this.$refs.player.isPaused() &&
+        !this.$refs.player.plyr.paused &&
         !document.hasFocus() &&
         contextModule.scenePauseOnUnfocus
       ) {
-        this.$refs.player.pause();
+        this.$refs.player.plyr.pause();
         this.autoPaused = true;
         this.$refs.player.notice("Auto pause", 4000);
       }
@@ -1372,7 +1357,7 @@ export default class SceneDetails extends Vue {
         this.autoPaused &&
         this.manuallyStarted
       ) {
-        this.$refs.player.play();
+        this.$refs.player.plyr.play();
         this.$refs.player.notice("", 0);
         this.autoPaused = false;
       }
@@ -1382,16 +1367,16 @@ export default class SceneDetails extends Vue {
       "visibilitychange",
       () => {
         if (this.$refs.player && contextModule.scenePauseOnUnfocus) {
-          const isPaused = this.$refs.player.isPaused();
+          const isPaused = this.$refs.player.plyr.paused;
 
           if (document.hidden) {
             if (!isPaused) {
-              this.$refs.player.pause();
+              this.$refs.player.plyr.pause();
               this.autoPaused = true;
               this.$refs.player.notice("Auto pause", 4000);
             }
           } else if (this.autoPaused && this.manuallyStarted) {
-            this.$refs.player.play();
+            this.$refs.player.plyr.play();
             this.autoPaused = false;
             this.$refs.player.notice("");
           }
