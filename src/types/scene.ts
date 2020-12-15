@@ -759,6 +759,11 @@ export default class Scene {
                 options: options.selectOptions,
               },
             ])
+            .videoCodec("libx264")
+            .addOption("-preset", "veryslow")
+            .addOption("-movflags", "frag_keyframe+empty_moov+faststart")
+            .addOption("-crf", "18")
+            .size("?x360")
             .output(options.output)
             .noAudio()
             .run();
