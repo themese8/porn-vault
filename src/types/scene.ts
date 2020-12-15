@@ -715,25 +715,27 @@ export default class Scene {
       const tmpFolder = path.join("tmp", scene._id);
       if (!existsSync(tmpFolder)) mkdirp.sync(tmpFolder);
 
-      let selectOptions = "";
-      const startPositionTime = 60;
-      const splitDuration = 5;
-      const intervalTime = 180;
+      const selectionDuration = 1.2;
+      const trailerLength = 12;
+      // Bug in FFMPEG, 0 start position does not always (?) work
+      const startOffset = 0.02 * scene.meta.duration;
 
-      let currentTime = startPositionTime;
-      while (currentTime < scene.meta.duration) {
-        const endTime = currentTime + splitDuration - 1;
-        selectOptions = `${selectOptions}${
-          selectOptions ? "+" : ""
-        }between(t\\,${currentTime}\\,${endTime})`;
+      let selectionOffset = 0;
 
-        currentTime = endTime + intervalTime;
+      const stepLength = (scene.meta.duration - startOffset) / (trailerLength / selectionDuration);
+
+      const selectOptions: string[] = [];
+
+      for (let step = 0; step < (trailerLength / selectionDuration); step++) {
+        selectionOffset = startOffset + stepLength * step;
+        selectOptions.push(
+          `between(t\\,${selectionOffset}\\,${selectionOffset + selectionDuration})`
+        );
       }
-      selectOptions = `'${selectOptions}',setpts=N/FRAME_RATE/TB`;
 
       const options = {
         file: scene.path,
-        selectOptions,
+        selectOptions: selectOptions.join("+") + ",setpts=N/FRAME_RATE/TB",
         output: path.resolve(tmpFolder, "trailer.mp4"),
       };
 
